@@ -10,11 +10,9 @@ import (
 
 	enginetypes "github.com/projecteru2/core/engine/types"
 	coretypes "github.com/projecteru2/core/types"
-	log "github.com/sirupsen/logrus"
 )
 
-// NetworkConnect connect to a network
-func (e *Engine) NetworkConnect(ctx context.Context, network, target, ipv4, ipv6 string) error {
+func (e *Engine) makeIPV4EndpointSetting(ipv4 string) (*dockernetwork.EndpointSettings, error) {
 	config := &dockernetwork.EndpointSettings{
 		IPAMConfig: &dockernetwork.EndpointIPAMConfig{},
 	}
@@ -23,18 +21,19 @@ func (e *Engine) NetworkConnect(ctx context.Context, network, target, ipv4, ipv6
 	if ipv4 != "" {
 		ip := net.ParseIP(ipv4)
 		if ip == nil {
-			return coretypes.NewDetailedErr(coretypes.ErrBadIPAddress, ipv4)
+			return nil, coretypes.NewDetailedErr(coretypes.ErrBadIPAddress, ipv4)
 		}
-
 		config.IPAMConfig.IPv4Address = ip.String()
 	}
+	return config, nil
+}
 
-	ipForShow := ipv4
-	if ipForShow == "" {
-		ipForShow = "[AutoAlloc]"
+// NetworkConnect connect to a network
+func (e *Engine) NetworkConnect(ctx context.Context, network, target, ipv4, ipv6 string) error {
+	config, err := e.makeIPV4EndpointSetting(ipv4)
+	if err != nil {
+		return err
 	}
-
-	log.Infof("[ConnectToNetwork] Connect %v to %v with IP %v", target, network, ipForShow)
 	return e.client.NetworkConnect(ctx, network, target, config)
 }
 

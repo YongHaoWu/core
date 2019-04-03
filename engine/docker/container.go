@@ -6,9 +6,10 @@ import (
 	"io"
 	"io/ioutil"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/docker/go-units"
 
-	"github.com/docker/go-connections/nat"
+	log "github.com/sirupsen/logrus"
 
 	dockertypes "github.com/docker/docker/api/types"
 	dockercontainer "github.com/docker/docker/api/types/container"
@@ -92,7 +93,23 @@ func (e *Engine) VirtualizationCreate(ctx context.Context, opts *enginetypes.Vir
 		config.ExposedPorts = exposePorts
 	}
 
-	containerCreated, err := e.client.ContainerCreate(ctx, config, hostConfig, &dockernetwork.NetworkingConfig{}, opts.Name)
+	networkConfig := &dockernetwork.NetworkingConfig{
+		EndpointsConfig: map[string]*dockernetwork.EndpointSettings{},
+	}
+	for networkID, ipv4 := range opts.Networks {
+		endpointSetting, err := e.makeIPV4EndpointSetting(ipv4)
+		if err != nil {
+			return r, err
+		}
+		ipForShow := ipv4
+		if ipForShow == "" {
+			ipForShow = "[AutoAlloc]"
+		}
+		networkConfig.EndpointsConfig[networkID] = endpointSetting
+		log.Infof("[ConnectToNetwork] Connect to %v with IP %v", networkID, ipForShow)
+	}
+
+	containerCreated, err := e.client.ContainerCreate(ctx, config, hostConfig, networkConfig, opts.Name)
 	r.Name = opts.Name
 	r.ID = containerCreated.ID
 	return r, err
@@ -135,15 +152,13 @@ func (e *Engine) VirtualizationInspect(ctx context.Context, ID string) (*enginet
 	r.Env = containerJSON.Config.Env
 	r.Labels = containerJSON.Config.Labels
 	r.Running = containerJSON.State.Running
-	if containerJSON.NetworkSettings != nil {
-		r.Networks = map[string]string{}
-		for networkName, networkSetting := range containerJSON.NetworkSettings.Networks {
-			ip := networkSetting.IPAddress
-			if dockercontainer.NetworkMode(networkName).IsHost() {
-				ip = GetIP(e.client.DaemonHost())
-			}
-			r.Networks[networkName] = ip
+	r.Networks = map[string]string{}
+	for networkName, networkSetting := range containerJSON.NetworkSettings.Networks {
+		ip := networkSetting.IPAddress
+		if dockercontainer.NetworkMode(networkName).IsHost() {
+			ip = GetIP(e.client.DaemonHost())
 		}
+		r.Networks[networkName] = ip
 	}
 	return r, nil
 }
