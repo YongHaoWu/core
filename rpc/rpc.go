@@ -444,11 +444,14 @@ func (v *Vibranium) RunAndWait(stream pb.CoreRPC_RunAndWaitServer) error {
 	}
 	go func() {
 		_ = runAndWait(func(ch <-chan *types.AttachContainerMessage) {
+			runMsg := ""
 			for m := range ch {
-				log.Infof("[Async RunAndWait] %v", string(m.Data))
+				runMsg += string(m.Data)
 			}
+			log.Infof("[Async RunAndWait] %s", runMsg)
 		})
 	}()
+
 	return nil
 }
 
